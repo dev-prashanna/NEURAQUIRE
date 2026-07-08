@@ -1,8 +1,73 @@
-uploaded_papers/
+# Python
 __pycache__/
-*.pyc
-.env
-venv/
+*.py[cod]
+*$py.class
+*.so
 *.egg-info/
+*.egg
 dist/
 build/
+eggs/
+*.whl
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Uploaded papers (user data)
+uploaded_papers/
+
+# Vector database (local storage)
+vector_db/
+
+# Extracted images (generated)
+backend/extracted_images/
+
+# Model weights and checkpoints
+*.pth
+*.pt
+*.h5
+*.onnx
+*.pkl
+*.joblib
+models/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Distribution
+*.tar.gz
+*.zip
+
+# Misc
+*.bak
+*.tmp
