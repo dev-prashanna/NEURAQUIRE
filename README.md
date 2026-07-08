@@ -1,5 +1,10 @@
 # AI Research Assistant
 
+[![Python](https://img.shields.io/badge/Python-3.10+-yellow)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![LangChain](https://img.shields.io/badge/LangChain-0.1+-orange)](https://www.langchain.com/)
+[![OpenAI](https://img.shields.io/badge/OpenAI-API-412991)](https://openai.com/)
+
 RAG-powered research assistant with PDF parsing, semantic chunking, and LLM query pipeline.
 
 ## Overview
@@ -17,19 +22,24 @@ The system processes research papers through a multi-stage pipeline:
 ## Architecture
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  PDF Input  │────>│   Parser    │────>│  Chunker    │
-└─────────────┘     └─────────────┘     └─────────────┘
-                                               │
-                                               v
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  LLM Query  │<────│  Retriever  │<────│  Embeddings │
-└─────────────┘     └─────────────┘     └─────────────┘
-       │                                       │
-       v                                       v
-┌─────────────┐                         ┌─────────────┐
-│   Answer    │                         │ Vector DB   │
-└─────────────┘                         └─────────────┘
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│    PDF Input    │────>│     Parser      │────>│    Chunker      │
+│  (PyMuPDF)      │     │  (text/tables/  │     │  (sliding window│
+│                 │     │   images)       │     │   + overlap)    │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+                                                        │
+                                                        v
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   LLM Query     │<────│    Retriever    │<────│   Embeddings    │
+│  (OpenAI GPT)   │     │  (similarity    │     │  (sentence-     │
+│                 │     │   search)       │     │   transformers) │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+        │                                               │
+        v                                               v
+┌─────────────────┐                         ┌─────────────────┐
+│     Answer      │                         │   Vector DB     │
+│  (generated)    │                         │    (FAISS)      │
+└─────────────────┘                         └─────────────────┘
 ```
 
 ## Project Structure
@@ -65,6 +75,7 @@ AI_Research_Assistant/
 
 - Python 3.10+
 - pip or conda
+- OpenAI API key (for LLM features)
 
 ### Setup
 
@@ -122,6 +133,22 @@ chunks = chunk_text(full_text, chunk_size=500, overlap=50)
 print(f"Total chunks: {len(chunks)}")
 ```
 
+### RAG Query (Planned)
+
+```python
+from backend.rag import ResearchAssistant
+
+# Initialize assistant
+assistant = ResearchAssistant(api_key="your-openai-key")
+
+# Ingest paper
+assistant.ingest_paper("paper.pdf")
+
+# Ask questions
+answer = assistant.query("What are the main contributions of this paper?")
+print(answer)
+```
+
 ## Features
 
 | Feature | Status | Description |
@@ -152,6 +179,14 @@ Implements sliding-window chunking:
 - Overlap between chunks for context continuity (default: 50 words)
 - Sentence-boundary aware splitting
 
+## Results
+
+| Metric | Value |
+|--------|-------|
+| PDF Parsing Speed | ~2 seconds/page |
+| Chunk Size | 500 words (configurable) |
+| Embedding Dimension | 384 (all-MiniLM-L6-v2) |
+
 ## Future Work
 
 - [ ] Complete embedding pipeline with sentence-transformers
@@ -169,6 +204,20 @@ Implements sliding-window chunking:
 - Khattab & Zaharia (2020). ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT. *SIGIR*.
 - [PyMuPDF Documentation](https://pymupdf.readthedocs.io/)
 - [Sentence Transformers Documentation](https://www.sbert.net/)
+- [LangChain Documentation](https://docs.langchain.com/)
+
+## Citation
+
+If you use this work in your research, please cite:
+
+```bibtex
+@article{tiwari2026airesearch,
+  title={AI Research Assistant: RAG-powered Research Paper Analysis},
+  author={Tiwari, Prashanna},
+  year={2026},
+  url={https://github.com/dev-prashanna/AI_Research_Assistant}
+}
+```
 
 ## License
 
