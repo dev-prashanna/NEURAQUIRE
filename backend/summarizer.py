@@ -42,8 +42,9 @@ def summarize(pdf_path: str, api_key: str) -> str:
 
     return response.choices[0].message.content
 if __name__ == "__main__":
-    PDF_PATH = "/home/prashanna/Documents/AI_Research_Assistant/uploaded_papers/attention_is_all_you_need.pdf"
-    API_KEY = "sk-syegg5w0lv7hw2esy7om5vb979juptedfabz4ki90xu05wvt"
+    import os
+    PDF_PATH = "uploaded_papers/sample.pdf"
+    API_KEY = os.getenv("OPENAI_API_KEY", "your-api-key-here")
 
     print("Summarizing...")
     summary = summarize(PDF_PATH, API_KEY)

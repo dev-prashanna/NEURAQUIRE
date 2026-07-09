@@ -62,8 +62,9 @@ def call_llm(prompt: str, api_key: str) -> str:
 
 
 if __name__ == "__main__":
-    PDF_PATH = "/home/prashanna/Documents/AI_Research_Assistant/uploaded_papers/attention_is_all_you_need.pdf"
-    API_KEY = "sk-syegg5w0lv7hw2esy7om5vb979juptedfabz4ki90xu05wvt"
+    import os
+    PDF_PATH = "uploaded_papers/sample.pdf"
+    API_KEY = os.getenv("OPENAI_API_KEY", "your-api-key-here")
 
     print("Loading document...")
     document = load_document(PDF_PATH)

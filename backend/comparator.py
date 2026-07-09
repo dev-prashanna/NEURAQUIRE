@@ -45,10 +45,11 @@ def compare_papers(pdf_path1: str, pdf_path2: str, api_key: str) -> str:
 
     return response.choices[0].message.content
 if __name__ == "__main__":
-    API_KEY = "sk-s282129z802fle0lty2epoyaz2smt1my0oqnuxtj7nnq87sl"
+    import os
+    API_KEY = os.getenv("OPENAI_API_KEY", "your-api-key-here")
 
-    pdf1 = "/home/prashanna/Documents/AI_Research_Assistant/uploaded_papers/attention_is_all_you_need.pdf"
-    pdf2 = "/home/prashanna/Documents/AI_Research_Assistant/uploaded_papers/bert.pdf"
+    pdf1 = "uploaded_papers/paper1.pdf"
+    pdf2 = "uploaded_papers/paper2.pdf"
 
     print("Comparing papers...")
     result = compare_papers(pdf1, pdf2, API_KEY)

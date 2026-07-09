@@ -1,4 +1,4 @@
-# AI Research Assistant
+# NeuraQuire
 
 [![Python](https://img.shields.io/badge/Python-3.10+-yellow)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -9,7 +9,7 @@ RAG-powered research assistant with PDF parsing, semantic chunking, and LLM quer
 
 ## Overview
 
-AI Research Assistant is a tool for researchers to interact with academic papers using Retrieval-Augmented Generation (RAG). Upload PDF papers, extract structured content (text, tables, images), chunk documents semantically, generate embeddings, and query papers using natural language.
+NeuraQuire is a tool for researchers to interact with academic papers using Retrieval-Augmented Generation (RAG). Upload PDF papers, extract structured content (text, tables, images), chunk documents semantically, generate embeddings, and query papers using natural language.
 
 The system processes research papers through a multi-stage pipeline:
 
@@ -45,8 +45,9 @@ The system processes research papers through a multi-stage pipeline:
 ## Project Structure
 
 ```
-AI_Research_Assistant/
+NEURAQUIRE/
 ├── backend/
+│   ├── __init__.py
 │   ├── parser.py              # PDF parsing (text, tables, images)
 │   ├── chunker.py             # Semantic text chunking
 │   ├── embeddings.py          # Embedding generation
@@ -63,8 +64,9 @@ AI_Research_Assistant/
 ├── models/                    # Model weights (gitignored)
 ├── uploaded_papers/           # User-uploaded PDFs (gitignored)
 ├── vector_db/                 # Vector database (gitignored)
-├── app.py                     # Main application entry point
+├── app.py                     # Streamlit application entry point
 ├── requirements.txt           # Python dependencies
+├── .gitignore                 # Git ignore rules
 ├── LICENSE                    # MIT License
 └── README.md                  # This file
 ```
@@ -81,8 +83,8 @@ AI_Research_Assistant/
 
 ```bash
 # Clone the repository
-git clone https://github.com/dev-prashanna/AI_Research_Assistant.git
-cd AI_Research_Assistant
+git clone https://github.com/dev-prashanna/NEURAQUIRE.git
+cd NEURAQUIRE
 
 # Create virtual environment
 python -m venv venv
@@ -102,6 +104,19 @@ OPENAI_API_KEY=your-api-key-here
 ```
 
 ## Usage
+
+### Streamlit Web Interface
+
+```bash
+streamlit run app.py
+```
+
+This will launch the web interface where you can:
+- Upload PDF papers
+- Ask questions about the paper (RAG Q&A)
+- Generate summaries
+- Compare two papers
+- View PDF metadata and text
 
 ### PDF Parsing
 
@@ -133,19 +148,17 @@ chunks = chunk_text(full_text, chunk_size=500, overlap=50)
 print(f"Total chunks: {len(chunks)}")
 ```
 
-### RAG Query (Planned)
+### RAG Query
 
 ```python
-from backend.rag import ResearchAssistant
+from backend.rag import load_document, ask_question, call_llm
 
-# Initialize assistant
-assistant = ResearchAssistant(api_key="your-openai-key")
-
-# Ingest paper
-assistant.ingest_paper("paper.pdf")
+# Load document and build index
+document = load_document("paper.pdf")
 
 # Ask questions
-answer = assistant.query("What are the main contributions of this paper?")
+prompt, results = ask_question(document, "What are the main contributions?")
+answer = call_llm(prompt, api_key)
 print(answer)
 ```
 
@@ -155,13 +168,13 @@ print(answer)
 |---------|--------|-------------|
 | PDF Parsing | Complete | Extract text, metadata, tables, images from PDFs |
 | Text Chunking | Complete | Split documents with configurable chunk size and overlap |
-| Embedding Generation | In Progress | Vector representations using sentence transformers |
-| Vector Store | In Progress | FAISS-based similarity search |
-| RAG Query | In Progress | Natural language queries over paper content |
-| Summarization | Planned | Auto-generate paper summaries |
-| Paper Comparison | Planned | Compare findings across multiple papers |
+| Embedding Generation | Complete | Vector representations using sentence transformers |
+| Vector Store | Complete | FAISS-based similarity search |
+| RAG Query | Complete | Natural language queries over paper content |
+| Summarization | Complete | Auto-generate paper summaries |
+| Paper Comparison | Complete | Compare findings across multiple papers |
+| Web Interface | Complete | Streamlit-based frontend |
 | Equation Extraction | Planned | Extract and render LaTeX equations |
-| Web Interface | Planned | Flask-based frontend |
 
 ## Technical Details
 
@@ -179,24 +192,34 @@ Implements sliding-window chunking:
 - Overlap between chunks for context continuity (default: 50 words)
 - Sentence-boundary aware splitting
 
+### Embeddings
+
+Uses sentence-transformers with all-MiniLM-L12-v2 model:
+- 384-dimensional embeddings
+- Optimized for semantic similarity search
+
+### Vector Store
+
+FAISS-based vector database:
+- Normalized inner product similarity
+- Efficient nearest neighbor search
+
 ## Results
 
 | Metric | Value |
 |--------|-------|
 | PDF Parsing Speed | ~2 seconds/page |
 | Chunk Size | 500 words (configurable) |
-| Embedding Dimension | 384 (all-MiniLM-L6-v2) |
+| Embedding Dimension | 384 (all-MiniLM-L12-v2) |
 
 ## Future Work
 
-- [ ] Complete embedding pipeline with sentence-transformers
-- [ ] Implement FAISS vector store for efficient retrieval
-- [ ] Build RAG query interface with OpenAI integration
-- [ ] Add document summarization using LLMs
-- [ ] Create web interface with Flask
-- [ ] Support multi-paper comparison queries
 - [ ] Add equation extraction and rendering
 - [ ] Implement citation tracking across papers
+- [ ] Support more LLM providers
+- [ ] Add batch processing for multiple papers
+- [ ] Create REST API for programmatic access
+- [ ] Add user authentication and paper management
 
 ## References
 
@@ -211,11 +234,11 @@ Implements sliding-window chunking:
 If you use this work in your research, please cite:
 
 ```bibtex
-@article{tiwari2026airesearch,
-  title={AI Research Assistant: RAG-powered Research Paper Analysis},
+@article{tiwari2026neuraquire,
+  title={NeuraQuire: RAG-powered Research Paper Analysis},
   author={Tiwari, Prashanna},
   year={2026},
-  url={https://github.com/dev-prashanna/AI_Research_Assistant}
+  url={https://github.com/dev-prashanna/NEURAQUIRE}
 }
 ```
 
