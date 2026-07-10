@@ -49,6 +49,7 @@ class Settings:
         self.LLM_BASE_URL = os.getenv("NEURAQUIRE_LLM_BASE_URL", self.LLM_BASE_URL)
         self.LLM_MODEL = os.getenv("NEURAQUIRE_LLM_MODEL", self.LLM_MODEL)
         self.EMBEDDING_MODEL = os.getenv("NEURAQUIRE_EMBEDDING_MODEL", self.EMBEDDING_MODEL)
+        self.VLM_MODEL = os.getenv("NEURAQUIRE_VLM_MODEL", self.VLM_MODEL)
 
         max_upload = os.getenv("NEURAQUIRE_MAX_UPLOAD_MB")
         if max_upload:
@@ -139,4 +140,3 @@ def get_settings() -> Settings:
 
 settings = get_settings()
 
-        self.VLM_MODEL = os.getenv("NEURAQUIRE_VLM_MODEL", self.VLM_MODEL)
