@@ -3,6 +3,8 @@ import os
 import re
 import tempfile
 from backend.logging_config import setup_logging, log_event
+from backend.config import load_env_file
+load_env_file()
 from backend.config import settings
 from backend.security import (
     validate_file, generate_safe_filepath, llm_rate_limiter, llm_cost_tracker,

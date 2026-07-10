@@ -53,7 +53,7 @@ def render_vlm_panel(file_path: str, api_key: str):
                 st.image(
                     f"data:image/png;base64,{img_b64}",
                     caption=f"Figure on page {fig.page_number}",
-                    use_container_width=True
+                    width="stretch"
                 )
 
                 if fig.figure_type != "unknown":

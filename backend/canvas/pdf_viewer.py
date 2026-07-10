@@ -137,16 +137,13 @@ def render_pdf_canvas(file_path: str, annotations: list = None, current_page: in
     </html>
     """
 
-    st.components.v1.html(pdf_html, height=650, scrolling=True)
+    st.iframe(pdf_html, height=650)
 
     doc.close()
 
 
 def _build_annotations_html(annotations: list, page_width: float, page_height: float) -> str:
     html_parts = []
-
-    scale_x = 100 / page_width
-    scale_y = 100 / page_height
 
     for ann in annotations:
         x1, y1, x2, y2 = ann.coordinates
