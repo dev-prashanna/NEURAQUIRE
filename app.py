@@ -1,6 +1,17 @@
 import streamlit as st
 import os
 import re
+from backend.logging_config import setup_logging, log_event
+from backend.config import settings
+from backend.security import (
+    validate_file, generate_safe_filepath, llm_rate_limiter, llm_cost_tracker,
+    sanitize_question, PromptInjectionDetected, cleanup_old_files, delete_file
+)
+from backend.rag import RateLimitExceeded, LLMError, ModelLoadError
+from backend.parser import PDFError
+
+setup_logging()
+logger = __import__("logging").getLogger(__name__)
 
 st.set_page_config(page_title="NeuraQuire", page_icon=":robot_face:", layout="wide")
 st.title("NeuraQuire")
@@ -21,11 +32,40 @@ if not uploaded_file:
     st.warning("Please upload a PDF file to use the app.")
     st.stop()
 
-upload_dir = "uploaded_papers"
+upload_dir = settings.UPLOAD_DIR
 os.makedirs(upload_dir, exist_ok=True)
-file_path = os.path.join(upload_dir, uploaded_file.name)
+
+deleted_count = cleanup_old_files(upload_dir)
+if deleted_count > 0:
+    logger.info(f"Cleaned up {deleted_count} expired files")
+
+user_id = st.session_state.get("user_id", "anonymous")
+if "user_id" not in st.session_state:
+    import uuid
+    st.session_state.user_id = uuid.uuid4().hex[:8]
+    user_id = st.session_state.user_id
+    log_event("SESSION_START", user_id)
+
+remaining = llm_rate_limiter.remaining(user_id)
+st.sidebar.caption(f"API requests remaining: {remaining}/10")
+
+is_valid, error_msg = validate_file(uploaded_file.name, uploaded_file.size)
+if not is_valid:
+    st.error(f"File rejected: {error_msg}")
+    st.stop()
+
+file_path = generate_safe_filepath(upload_dir, uploaded_file.name)
 with open(file_path, "wb") as f:
     f.write(uploaded_file.getbuffer())
+
+log_event("FILE_UPLOAD", user_id, {"file": uploaded_file.name, "size": uploaded_file.size, "path": file_path})
+
+if "current_file" in st.session_state and st.session_state.current_file:
+    old_file = st.session_state.current_file
+    if os.path.exists(old_file) and old_file != file_path:
+        delete_file(old_file)
+
+st.session_state.current_file = file_path
 
 tab1, tab2, tab3, tab4 = st.tabs(["RAG Q&A", "Summarizer", "Comparator", "PDF Viewer"])
 
@@ -35,19 +75,58 @@ with tab1:
     if "document" not in st.session_state:
         with st.spinner("Processing PDF..."):
             from backend.rag import load_document
-            st.session_state.document = load_document(file_path)
+            try:
+                st.session_state.document = load_document(file_path)
+            except PDFError as e:
+                st.error(f"Failed to process PDF: {e}")
+                st.stop()
+            except ModelLoadError as e:
+                st.error(str(e))
+                st.stop()
+            except Exception as e:
+                logger.error(f"Unexpected error loading document: {e}")
+                st.error("An unexpected error occurred while processing the PDF.")
+                st.stop()
         st.success(f"Loaded {len(st.session_state.document['chunks'])} chunks")
 
     question = st.text_input("Ask a question about the Paper:")
     if question:
+        try:
+            safe_question = sanitize_question(question)
+        except PromptInjectionDetected as e:
+            log_event("INJECTION_BLOCKED", user_id, {"question": question[:100]})
+            st.error(str(e))
+            st.stop()
+
+        log_event("QUESTION_ASKED", user_id, {"question": safe_question[:100]})
+
         with st.spinner("Searching and generating answer..."):
             from backend.rag import ask_question, call_llm
-            prompt, results = ask_question(st.session_state.document, question)
-            answer = call_llm(prompt, api_key)
+            try:
+                prompt, results = ask_question(st.session_state.document, safe_question)
+            except ModelLoadError as e:
+                st.error(str(e))
+                st.stop()
+
+            try:
+                answer = call_llm(prompt, api_key, user_id=user_id)
+            except RateLimitExceeded as e:
+                st.error(str(e))
+                st.stop()
+            except LLMError as e:
+                st.error(str(e))
+                st.stop()
+            except Exception as e:
+                logger.error(f"LLM call failed: {e}")
+                st.error("Failed to generate answer. Please try again.")
+                st.stop()
 
         st.subheader("Answer:")
-        clean_answer =re.sub(r'<[^>]+>','',answer)
+        clean_answer = re.sub(r'<[^>]+>', '', answer)
         st.write(clean_answer)
+
+        cost = llm_cost_tracker.total(user_id)
+        st.caption(f"Session cost: ${cost:.4f}")
 
         with st.expander("See source chunks"):
             for i, r in enumerate(results):
@@ -61,7 +140,18 @@ with tab2:
     if st.button("Generate Summary"):
         with st.spinner("Summarizing... This may take a minute"):
             from backend.summarizer import summarize
-            summary = summarize(file_path, api_key)
+            try:
+                summary = summarize(file_path, api_key, user_id=user_id)
+            except RateLimitExceeded as e:
+                st.error(str(e))
+                st.stop()
+            except LLMError as e:
+                st.error(str(e))
+                st.stop()
+            except Exception as e:
+                logger.error(f"Summarization failed: {e}")
+                st.error("Failed to generate summary. Please try again.")
+                st.stop()
 
         st.subheader("Summary:")
         st.write(summary)
@@ -72,24 +162,49 @@ with tab3:
     uploaded_file2 = st.file_uploader("Upload second PDF", type=["pdf"], key="second_pdf")
 
     if uploaded_file2 and st.button("Compare"):
-        file_path2 = os.path.join(upload_dir, uploaded_file2.name)
-        with open(file_path2, "wb") as f:
-            f.write(uploaded_file2.getbuffer())
+        is_valid2, error_msg2 = validate_file(uploaded_file2.name, uploaded_file2.size)
+        if not is_valid2:
+            st.error(f"File rejected: {error_msg2}")
+        else:
+            file_path2 = generate_safe_filepath(upload_dir, uploaded_file2.name)
+            with open(file_path2, "wb") as f:
+                f.write(uploaded_file2.getbuffer())
 
-        with st.spinner("Comparing papers..."):
-            from backend.comparator import compare_papers
-            comparison = compare_papers(file_path, file_path2, api_key)
+            with st.spinner("Comparing papers..."):
+                from backend.comparator import compare_papers
+                try:
+                    comparison = compare_papers(file_path, file_path2, api_key, user_id=user_id)
+                except RateLimitExceeded as e:
+                    st.error(str(e))
+                    st.stop()
+                except LLMError as e:
+                    st.error(str(e))
+                    st.stop()
+                except Exception as e:
+                    logger.error(f"Comparison failed: {e}")
+                    st.error("Failed to compare papers. Please try again.")
+                    st.stop()
+                finally:
+                    delete_file(file_path2)
 
-        st.subheader("Comparison:")
-        st.write(comparison)
+            st.subheader("Comparison:")
+            st.write(comparison)
 
 with tab4:
     st.header("View your PDF")
 
     from backend.parser import get_full_text, parse_pdf
 
-    doc_data = parse_pdf(file_path)
-    full_text = get_full_text(file_path)
+    try:
+        doc_data = parse_pdf(file_path)
+        full_text = get_full_text(file_path)
+    except PDFError as e:
+        st.error(f"Failed to read PDF: {e}")
+        st.stop()
+    except Exception as e:
+        logger.error(f"PDF viewer failed: {e}")
+        st.error("Failed to display PDF.")
+        st.stop()
 
     col1, col2 = st.columns(2)
 

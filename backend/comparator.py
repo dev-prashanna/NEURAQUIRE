@@ -1,3 +1,10 @@
+from openai import OpenAI
+from backend.parser import get_full_text
+from backend.security import llm_rate_limiter
+from backend.rag import RateLimitExceeded
+from backend.config import settings
+
+
 def build_comparison_prompt(text1: str, text2: str) -> str:
     return f"""Compare these two research papers. Provide:
 1. Key similarities
@@ -11,19 +18,18 @@ Paper 2:
 {text2}
 
 Comparison:"""
-from openai import OpenAI
-try:
-    from backend.parser import get_full_text
-except ImportError:
-    from parser import get_full_text
 
 
-def compare_papers(pdf_path1: str, pdf_path2: str, api_key: str) -> str:
+def compare_papers(pdf_path1: str, pdf_path2: str, api_key: str, user_id: str = "anonymous") -> str:
+    allowed, retry_after = llm_rate_limiter.allow(user_id)
+    if not allowed:
+        raise RateLimitExceeded(
+            f"Rate limit exceeded. Try again in {retry_after:.0f} seconds."
+        )
+
     text1 = get_full_text(pdf_path1)
     text2 = get_full_text(pdf_path2)
 
-    # Truncate to fit context window (MiMo V2.5 supports 1M tokens, so we're safe)
-    # But keep it reasonable for speed
     text1 = text1[:10000]
     text2 = text2[:10000]
 
@@ -31,19 +37,21 @@ def compare_papers(pdf_path1: str, pdf_path2: str, api_key: str) -> str:
 
     client = OpenAI(
         api_key=api_key,
-        base_url="https://api.xiaomimimo.com/v1"
+        base_url=settings.LLM_BASE_URL
     )
 
     response = client.chat.completions.create(
-        model="mimo-v2.5",
+        model=settings.LLM_MODEL,
         messages=[
             {"role": "user", "content": prompt}
         ],
         max_tokens=2048,
-        temperature=0.3
+        temperature=settings.LLM_TEMPERATURE
     )
 
     return response.choices[0].message.content
+
+
 if __name__ == "__main__":
     import os
     API_KEY = os.getenv("OPENAI_API_KEY", "your-api-key-here")

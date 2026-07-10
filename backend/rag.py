@@ -1,62 +1,110 @@
-try:
-    from backend.parser import parse_pdf, get_full_text
-    from backend.chunker import chunk_text
-    from backend.embeddings import get_embeddings
-    from backend.vector_store import build_index, search
-    from backend.prompts import build_prompt
-except ImportError:
-    from parser import parse_pdf, get_full_text
-    from chunker import chunk_text
-    from embeddings import get_embeddings
-    from vector_store import build_index, search
-    from prompts import build_prompt
+from backend.parser import parse_pdf, get_full_text, PDFError
+from backend.chunker import chunk_text
+from backend.embeddings import get_embeddings
+from backend.vector_store import build_index, search
+from backend.prompts import build_prompt
+from backend.security import llm_rate_limiter, llm_cost_tracker
+from backend.model_manager import model_manager
+from backend.config import settings
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class RateLimitExceeded(Exception):
+    pass
+
+
+class LLMError(Exception):
+    pass
+
+
+class ModelLoadError(Exception):
+    pass
 
 
 def load_document(pdf_path: str) -> dict:
-    full_text = get_full_text(pdf_path)
-    chunks = chunk_text(full_text)
-    embeddings = get_embeddings(chunks)
+    try:
+        full_text = get_full_text(pdf_path)
+    except PDFError:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to load document {pdf_path}: {e}")
+        raise PDFError(f"Cannot process this PDF. It may be corrupt or unreadable.") from e
+
+    if not full_text.strip():
+        raise PDFError("PDF contains no extractable text. It may be a scanned document.")
+
+    chunks = chunk_text(full_text, chunk_size=settings.CHUNK_SIZE, overlap=settings.CHUNK_OVERLAP)
+    if not chunks:
+        raise PDFError("Failed to split document into chunks.")
+
+    try:
+        embeddings = get_embeddings(chunks)
+    except Exception as e:
+        logger.error(f"Failed to generate embeddings: {e}")
+        raise ModelLoadError("Failed to load AI model. Please try again.") from e
+
     index = build_index(embeddings)
-    
+
     return {
         "index": index,
         "chunks": chunks,
         "metadata": parse_pdf(pdf_path)["metadata"]
     }
 
-from sentence_transformers import SentenceTransformer
 
-model = SentenceTransformer("all-MiniLM-L12-v2")
+def ask_question(document: dict, question: str, top_k: int = None) -> str:
+    if top_k is None:
+        top_k = settings.TOP_K_RESULTS
 
+    try:
+        query_embedding = model_manager.encode_single(question)
+    except Exception as e:
+        logger.error(f"Failed to encode question: {e}")
+        raise ModelLoadError("Failed to process question. Please try again.") from e
 
-def ask_question(document: dict, question: str, top_k: int = 3) -> str:
-    query_embedding = model.encode([question])[0].tolist()
-    
     results = search(document["index"], query_embedding, document["chunks"], top_k=top_k)
-    
+
     context_chunks = [r["chunk"] for r in results]
-    
+
     prompt = build_prompt(question, context_chunks)
-    
+
     return prompt, results
+
 
 from openai import OpenAI
 
 
-def call_llm(prompt: str, api_key: str) -> str:
+def call_llm(prompt: str, api_key: str, user_id: str = "anonymous") -> str:
+    allowed, retry_after = llm_rate_limiter.allow(user_id)
+    if not allowed:
+        raise RateLimitExceeded(
+            f"Rate limit exceeded. Try again in {retry_after:.0f} seconds. "
+            f"Remaining requests: {llm_rate_limiter.remaining(user_id)}"
+        )
+
     client = OpenAI(
         api_key=api_key,
-        base_url="https://api.xiaomimimo.com/v1"
+        base_url=settings.LLM_BASE_URL
     )
 
-    response = client.chat.completions.create(
-        model="mimo-v2.5",
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
-        max_tokens=1024,
-        temperature=0.3
-    )
+    try:
+        response = client.chat.completions.create(
+            model=settings.LLM_MODEL,
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=settings.LLM_MAX_TOKENS,
+            temperature=settings.LLM_TEMPERATURE
+        )
+    except Exception as e:
+        logger.error(f"LLM API call failed: {e}")
+        raise LLMError("Failed to get response from AI model. Please try again.") from e
+
+    usage = response.usage
+    if usage:
+        llm_cost_tracker.record(user_id, usage.total_tokens)
 
     return response.choices[0].message.content
 
