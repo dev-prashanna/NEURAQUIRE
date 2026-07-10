@@ -15,3 +15,6 @@ streamlit>=1.30.0
 # Math Wizard
 Pillow>=10.0.0
 sympy>=1.12
+
+# Vision (VLM)
+google-generativeai>=0.5.0

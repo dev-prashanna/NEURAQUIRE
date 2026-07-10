@@ -273,6 +273,7 @@ def render_math_wizard():
         render_solution_controls, render_final_answer, render_practice_problems
     )
     from backend.canvas.annotation_layer import AnnotationLayer
+    from backend.canvas.vlm_panel import render_vlm_panel
 
     if "math_state" not in st.session_state:
         st.session_state.math_state = {
@@ -323,7 +324,13 @@ def render_math_wizard():
         else:
             st.info("No mathematical content detected in this document.")
 
-    left_col, right_col = st.columns([1, 1])
+    vlm_tab, main_tab = st.tabs(["👁️ Vision Analysis", "📐 Main Canvas"])
+
+    with vlm_tab:
+        render_vlm_panel(file_path, api_key)
+
+    with main_tab:
+     left_col, right_col = st.columns([1, 1])
 
     with left_col:
         st.markdown("**📄 Document Viewer**")

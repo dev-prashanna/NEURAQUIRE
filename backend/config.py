@@ -36,6 +36,9 @@ class Settings:
     RATE_LIMIT_MAX_REQUESTS: int = 10
     RATE_LIMIT_WINDOW_SECONDS: int = 60
 
+    VLM_MODEL: str = "gemini-1.5-flash"
+    VLM_DESCRIPTION_DETAIL: str = "detailed"
+
     UPLOAD_DIR: str = "uploaded_papers"
     VECTOR_DB_DIR: str = "vector_db"
     LOG_DIR: str = "logs"
@@ -135,3 +138,5 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+        self.VLM_MODEL = os.getenv("NEURAQUIRE_VLM_MODEL", self.VLM_MODEL)
