@@ -9,6 +9,7 @@ from backend.security import (
 )
 from backend.rag import RateLimitExceeded, LLMError, ModelLoadError
 from backend.parser import PDFError
+from backend.conversation import ConversationHistory
 
 setup_logging()
 logger = __import__("logging").getLogger(__name__)
@@ -67,10 +68,13 @@ if "current_file" in st.session_state and st.session_state.current_file:
 
 st.session_state.current_file = file_path
 
-tab1, tab2, tab3, tab4 = st.tabs(["RAG Q&A", "Summarizer", "Comparator", "PDF Viewer"])
+if "conversation" not in st.session_state:
+    st.session_state.conversation = ConversationHistory(max_turns=10)
+
+tab1, tab2, tab3, tab4 = st.tabs(["Chat", "Summarizer", "Comparator", "PDF Viewer"])
 
 with tab1:
-    st.header("Ask questions about your PDF")
+    st.header("Chat with your PDF")
 
     if "document" not in st.session_state:
         with st.spinner("Processing PDF..."):
@@ -89,50 +93,80 @@ with tab1:
                 st.stop()
         st.success(f"Loaded {len(st.session_state.document['chunks'])} chunks")
 
-    question = st.text_input("Ask a question about the Paper:")
-    if question:
+    conversation = st.session_state.conversation
+
+    for msg in conversation.get_all():
+        with st.chat_message(msg.role):
+            st.write(msg.content)
+            if msg.sources:
+                with st.expander("Sources"):
+                    for i, src in enumerate(msg.sources):
+                        st.write(f"**Chunk {i+1}** (similarity: {src['distance']:.4f})")
+                        st.write(src['chunk'][:300])
+                        st.write("---")
+
+    if prompt := st.chat_input("Ask a question about the paper..."):
         try:
-            safe_question = sanitize_question(question)
+            safe_question = sanitize_question(prompt)
         except PromptInjectionDetected as e:
-            log_event("INJECTION_BLOCKED", user_id, {"question": question[:100]})
+            log_event("INJECTION_BLOCKED", user_id, {"question": prompt[:100]})
             st.error(str(e))
             st.stop()
 
         log_event("QUESTION_ASKED", user_id, {"question": safe_question[:100]})
 
-        with st.spinner("Searching and generating answer..."):
-            from backend.rag import ask_question, call_llm
-            try:
-                prompt, results = ask_question(st.session_state.document, safe_question)
-            except ModelLoadError as e:
-                st.error(str(e))
-                st.stop()
+        st.session_state.conversation.add_user_message(safe_question)
+        with st.chat_message("user"):
+            st.write(safe_question)
 
-            try:
-                answer = call_llm(prompt, api_key, user_id=user_id)
-            except RateLimitExceeded as e:
-                st.error(str(e))
-                st.stop()
-            except LLMError as e:
-                st.error(str(e))
-                st.stop()
-            except Exception as e:
-                logger.error(f"LLM call failed: {e}")
-                st.error("Failed to generate answer. Please try again.")
-                st.stop()
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                from backend.rag import ask_question, call_llm
+                history = conversation.get_context(include_last_n=3)
+                try:
+                    prompt_text, results = ask_question(
+                        st.session_state.document, safe_question, history=history
+                    )
+                except ModelLoadError as e:
+                    st.error(str(e))
+                    st.stop()
 
-        st.subheader("Answer:")
-        clean_answer = re.sub(r'<[^>]+>', '', answer)
-        st.write(clean_answer)
+                try:
+                    answer = call_llm(prompt_text, api_key, user_id=user_id)
+                except RateLimitExceeded as e:
+                    st.error(str(e))
+                    st.stop()
+                except LLMError as e:
+                    st.error(str(e))
+                    st.stop()
+                except Exception as e:
+                    logger.error(f"LLM call failed: {e}")
+                    st.error("Failed to generate answer. Please try again.")
+                    st.stop()
+
+            clean_answer = re.sub(r'<[^>]+>', '', answer)
+            st.write(clean_answer)
+
+            with st.expander("See source chunks"):
+                for i, r in enumerate(results):
+                    st.write(f"**Chunk {i + 1}** (similarity: {r['distance']:.4f})")
+                    st.write(r['chunk'][:300])
+                    st.write("---")
+
+            st.session_state.conversation.add_assistant_message(clean_answer, sources=results)
 
         cost = llm_cost_tracker.total(user_id)
         st.caption(f"Session cost: ${cost:.4f}")
 
-        with st.expander("See source chunks"):
-            for i, r in enumerate(results):
-                st.write(f"**Chunk {i + 1}** (similarity: {r['distance']:.4f})")
-                st.write(r['chunk'][:300])
-                st.write("---")
+    if conversation:
+        st.divider()
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            if st.button("Clear History"):
+                st.session_state.conversation.clear()
+                st.rerun()
+        with col2:
+            st.caption(f"Conversation turns: {len(conversation) // 2}")
 
 with tab2:
     st.header("Summarize your PDF")

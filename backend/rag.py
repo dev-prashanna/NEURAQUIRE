@@ -54,7 +54,7 @@ def load_document(pdf_path: str) -> dict:
     }
 
 
-def ask_question(document: dict, question: str, top_k: int = None) -> str:
+def ask_question(document: dict, question: str, top_k: int = None, history: list = None) -> str:
     if top_k is None:
         top_k = settings.TOP_K_RESULTS
 
@@ -68,7 +68,7 @@ def ask_question(document: dict, question: str, top_k: int = None) -> str:
 
     context_chunks = [r["chunk"] for r in results]
 
-    prompt = build_prompt(question, context_chunks)
+    prompt = build_prompt(question, context_chunks, history=history)
 
     return prompt, results
 
