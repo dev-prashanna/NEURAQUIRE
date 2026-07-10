@@ -11,3 +11,7 @@ openai>=1.0.0
 
 # Frontend
 streamlit>=1.30.0
+
+# Math Wizard
+Pillow>=10.0.0
+sympy>=1.12
